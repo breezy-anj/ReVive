@@ -6,15 +6,9 @@ import './Scan.css';
 function Scan() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-
   // States
   const [step, setStep] = useState('capture'); // capture | loading
   const [images, setImages] = useState([]); // array of { base64, mimeType, dataUrl }
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState(null);
 
   // User input
   const [userNotes, setUserNotes] = useState('');
@@ -23,32 +17,7 @@ function Scan() {
   const [error, setError] = useState(null);
   const [bsAlert, setBsAlert] = useState(null);
 
-  // Start camera
-  const startCamera = useCallback(async () => {
-    try {
-      setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setCameraActive(true);
-    } catch (err) {
-      console.error('Camera error:', err);
-      setCameraError('Camera access denied. Please use the upload option instead.');
-    }
-  }, []);
-
-  // Stop camera
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setCameraActive(false);
-  }, []);
+  // Removed WebRTC startCamera and stopCamera - using native HTML5 capture instead
 
   // Helper to resize/compress image before sending to API
   const resizeImage = (dataUrl, maxWidth = 1024) => {
@@ -83,23 +52,7 @@ function Scan() {
     setImages(prev => [...prev, { dataUrl, mimeType, base64 }]);
   };
 
-  // Capture from camera
-  const capturePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || images.length >= 4) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    const base64 = dataUrl.split(',')[1];
-    
-    addImage(dataUrl, 'image/jpeg', base64);
-    
-    // Stop camera after capture to save battery, user can restart if they want more
-    stopCamera();
-  }, [images.length, stopCamera]);
+
 
   // Handle file upload
   const handleFileUpload = useCallback((e) => {
@@ -233,28 +186,10 @@ function Scan() {
         </div>
       )}
 
-      {/* Camera or Capture Placeholder */}
+      {/* Capture Placeholder */}
       {images.length < 4 && (
         <div className="capture-area" style={images.length > 0 ? { minHeight: 'auto', padding: '20px 0' } : {}}>
-          {cameraActive ? (
-            <div className="camera-wrap">
-              <video ref={videoRef} autoPlay playsInline muted className="camera-feed" />
-              <div className="camera-overlay">
-                <div className="scan-frame">
-                  <div className="frame-corner tl"></div>
-                  <div className="frame-corner tr"></div>
-                  <div className="frame-corner bl"></div>
-                  <div className="frame-corner br"></div>
-                </div>
-              </div>
-              <div className="camera-controls">
-                <button className="capture-btn" onClick={capturePhoto}>
-                  <div className="capture-btn-inner"></div>
-                </button>
-                <button className="btn-close-camera" onClick={stopCamera}>Cancel</button>
-              </div>
-            </div>
-          ) : images.length === 0 ? (
+          {images.length === 0 ? (
             <div className="capture-placeholder">
               <div className="placeholder-icon">📸</div>
               <p>No images added yet</p>
@@ -262,8 +197,6 @@ function Scan() {
           ) : null}
         </div>
       )}
-
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {/* BS Alert Modal */}
       {bsAlert && (
@@ -296,25 +229,32 @@ function Scan() {
           />
         </div>
 
-        {images.length < 4 && !cameraActive && (
+        {images.length < 4 && (
           <div className="capture-actions">
-            <button className="btn btn-primary" onClick={startCamera}>
+            <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
+              <input 
+                type="file" 
+                accept="image/*" 
+                capture="environment"
+                multiple
+                style={{ display: 'none' }} 
+                onChange={handleFileUpload} 
+              />
               <span className="icon">📷</span> Open Camera
-            </button>
-            <button className="btn btn-outline" onClick={() => fileInputRef.current?.click()}>
+            </label>
+            <label className="btn btn-outline" style={{ cursor: 'pointer' }}>
+              <input 
+                type="file" 
+                accept="image/*" 
+                multiple
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                onChange={handleFileUpload} 
+              />
               <span className="icon">🖼️</span> Upload from Gallery
-            </button>
+            </label>
           </div>
         )}
-        {cameraError && <p className="error-text text-center mt-2">{cameraError}</p>}
-        <input 
-          type="file" 
-          accept="image/*" 
-          multiple
-          ref={fileInputRef} 
-          style={{ display: 'none' }} 
-          onChange={handleFileUpload} 
-        />
       </div>
 
       {/* Analyze Footer */}

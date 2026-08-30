@@ -8,6 +8,19 @@ function Landing() {
     <div className="landing page-enter">
       {/* Hero Section */}
       <div className="landing-hero">
+        <div style={{ 
+          backgroundColor: 'var(--primary-bg-alt)', 
+          color: 'var(--primary-dark)', 
+          padding: '4px 10px', 
+          borderRadius: '12px', 
+          fontSize: '0.75rem', 
+          fontWeight: '600', 
+          marginBottom: '20px',
+          display: 'inline-block',
+          border: '1px solid var(--primary-light)'
+        }}>
+          📱 Mobile Web Prototype
+        </div>
         <div className="landing-logo-wrap">
           <div className="landing-logo">
             <img src="/logo.png" alt="ReVive" style={{ width: '64px', height: '64px', borderRadius: '50%' }} />

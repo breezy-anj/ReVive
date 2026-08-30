@@ -85,11 +85,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Hidden on mobile */
-.desktop-notice {
-  display: none;
-}
-
 @media (min-width: 431px) {
   body {
     background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--primary-light) 100%);
@@ -98,36 +93,6 @@ body {
     align-items: flex-start;
   }
   
-  .desktop-notice {
-    display: block;
-    position: fixed;
-    left: 40px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 300px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    color: white;
-    z-index: 100;
-  }
-
-  .desktop-notice h3 {
-    margin: 0 0 12px 0;
-    font-size: 1.2rem;
-    color: var(--white);
-  }
-
-  .desktop-notice p {
-    margin: 0;
-    font-size: 0.95rem;
-    line-height: 1.5;
-    opacity: 0.9;
-    color: var(--white);
-  }
-
   .app-shell {
     border-radius: var(--radius-lg);
     margin-top: 20px;
