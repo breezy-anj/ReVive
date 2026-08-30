@@ -10,14 +10,7 @@ function Landing() {
       <div className="landing-hero">
         <div className="landing-logo-wrap">
           <div className="landing-logo">
-            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-              <circle cx="32" cy="32" r="30" stroke="#0A6847" strokeWidth="3" fill="#d1f2e0" />
-              <path d="M42 26C42 26 38 22 32 22C26 22 22 26 22 32C22 38 26 42 32 42" stroke="#0A6847" strokeWidth="3" strokeLinecap="round" />
-              <path d="M42 32C42 26 38 22 32 22" stroke="#0A6847" strokeWidth="3" strokeLinecap="round" opacity="0.5" />
-              <path d="M38 20L42 26L48 24" stroke="#0A6847" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M32 42L32 36" stroke="#0A6847" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M29 39L32 42L35 39" stroke="#0A6847" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <img src="/logo.png" alt="ReVive" style={{ width: '64px', height: '64px', borderRadius: '50%' }} />
           </div>
           <h1 className="landing-title">
             Re<span className="text-primary">Vive</span>
