@@ -2,81 +2,29 @@ import { GoogleGenAI } from "@google/genai";
 
 const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
-export async function moderateImage(base64Image, mimeType = "image/jpeg") {
-  const prompt = `You are a content moderation AI for "ReVive", an app that helps people find the best second life for products they no longer need.
-
-Analyze this image and determine:
-1. Is this a physical product/item that someone could potentially sell, repair, donate, repurpose, exchange, or recycle?
-2. Valid items include: electronics, furniture, appliances, kitchenware, sports equipment, clothing, books, tools, toys, vehicles, accessories, bags, shoes, musical instruments, stationery, bottles, flasks, containers — basically ANY physical man-made product.
-3. Invalid items include: people/selfies, pets/animals, food, nature/scenery, inappropriate/NSFW content, screenshots, memes, random abstract images.
-
-Respond ONLY with valid JSON (no markdown, no code fences):
-{
-  "isProduct": true or false,
-  "productName": "detected product name" or null,
-  "category": "electronics/furniture/appliance/kitchenware/clothing/sports/books/tools/toys/accessories/other" or null,
-  "rejectionReason": "pet/food/person/inappropriate/nature/other" or null,
-  "rejectionMessage": "A funny, friendly rejection message" or null
-}
-
-Rejection message examples by type:
-- pet: "That's adorable, but ReVive is for products, not pets! Try scanning something you want to give a second life. 🐕"
-- food: "Looks delicious, but we can't recycle pizza! Scan an old gadget, chair, or anything reusable instead. 🍕"
-- person: "Great photo! But we're looking for items to revive, not people. Try scanning something you own. 📸"
-- inappropriate: "This content isn't appropriate. ReVive helps products find new life. 🚫"
-- nature: "Beautiful view! But scan a product — a phone, a chair, a flask — anything you want to repurpose. 🌳"
-- other: "Hmm, that doesn't look like something we can help with. Try scanning a product you want to give a second life! 🤔"`;
-
-  try {
-    const response = await genAI.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: base64Image,
-              },
-            },
-          ],
-        },
-      ],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const text = response.text.trim();
-    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(cleaned);
-  } catch (error) {
-    console.error("Moderation error:", error);
-    throw new Error(`Failed to analyze image: ${error.message}`);
-  }
-}
-
-export async function analyzeProduct(base64Image, mimeType = "image/jpeg", productInfo, answers, city, userNotes) {
+export async function analyzeImages(images, userNotes) {
   const prompt = `You are ReVive AI — an expert product analyst that helps people find the best second life for products they no longer need. You think creatively and practically.
 
-PRODUCT DETECTED: ${productInfo.productName}
-CATEGORY: ${productInfo.category}
-USER'S CITY/AREA: ${city || "India (general)"}
+First, determine if the provided images contain a valid physical product.
+1. Valid items include: electronics, furniture, appliances, kitchenware, sports equipment, clothing, books, tools, toys, vehicles, accessories, bags, shoes, musical instruments, stationery, bottles, flasks, containers — basically ANY physical man-made product.
+2. Invalid items include: people/selfies, pets/animals, food, nature/scenery, inappropriate/NSFW content, screenshots, memes, random abstract images.
 
-USER'S ANSWERS:
-- Condition: ${answers.condition}
-- Age: ${answers.age}
-- Still functional: ${answers.functional}
-- Accessories included: ${answers.accessories}
+If the image is INVALID, respond ONLY with valid JSON in this format:
+{
+  "isProduct": false,
+  "rejectionReason": "pet/food/person/inappropriate/nature/other",
+  "rejectionMessage": "A funny, friendly rejection message (e.g., 'That's adorable, but ReVive is for products, not pets!')"
+}
+
+If the image is VALID, analyze the product and generate 5-7 creative, actionable paths. Think BEYOND just "sell/repair/donate/recycle". 
+
 ${userNotes ? `
 USER'S ADDITIONAL NOTES:
 "${userNotes}"
-(Consider these notes carefully — the user may have described specific problems, preferences, or urgency that should influence your recommendations)
+(Consider these notes carefully — the user may have described specific problems, preferences, condition, age, or urgency that should influence your recommendations)
 ` : ''}
 
-TASK: Generate 5-7 creative, actionable paths for what the user can do with this item. Think BEYOND just "sell/repair/donate/recycle". Include:
+Include in your paths:
 - Specific platforms/places to sell (with estimated price ranges in ₹)
 - Creative repurposing/upcycling ideas (DIY projects)
 - Specific organizations or types of places to donate
@@ -85,13 +33,12 @@ TASK: Generate 5-7 creative, actionable paths for what the user can do with this
 - Environmental recycling options
 - Any unique, creative ideas specific to this product
 
-Consider the user's city for local suggestions when possible.
-
-Respond ONLY with valid JSON (no markdown, no code fences):
+Respond ONLY with valid JSON in this format:
 {
+  "isProduct": true,
   "product": {
     "name": "Full product name",
-    "category": "category",
+    "category": "electronics/furniture/appliance/kitchenware/clothing/sports/books/tools/toys/accessories/other",
     "conditionScore": 0-100,
     "conditionLabel": "Excellent/Good/Average/Poor",
     "estimatedValueRange": "₹X,XXX - ₹X,XXX",
@@ -116,14 +63,23 @@ Respond ONLY with valid JSON (no markdown, no code fences):
   "aiNote": "A brief personalized note from ReVive AI about the best overall approach (2-3 sentences)"
 }
 
-IMPORTANT:
+IMPORTANT FOR VALID PRODUCTS:
+- The FIRST recommendation MUST ALWAYS be about making money (selling, trading in, scrapping for cash).
+- If the item is nearly worthless, the first path should explicitly acknowledge this (e.g., "This can't earn much money, max ₹50, so selling isn't worth the effort") and then suggest what to do instead.
 - Exactly ONE path should have "isRecommended": true
 - Order paths from most recommended to least
-- Be specific: name actual platforms (OLX, Cashify, Facebook Marketplace, Amazon trade-in, etc.)
-- Be specific: name actual types of places (kabadiwala, Croma exchange, local repair shops)
-- For the user's city, mention specific local markets or areas if you know them
-- Price estimates should be realistic for the Indian market
+- Be specific: name actual platforms, types of places, and realistically estimate prices for the Indian market.
 - Include at least one creative/unusual option`;
+
+  const parts = [
+    { text: prompt },
+    ...images.map(img => ({
+      inlineData: {
+        mimeType: img.mimeType,
+        data: img.base64,
+      },
+    })),
+  ];
 
   try {
     const response = await genAI.models.generateContent({
@@ -131,15 +87,7 @@ IMPORTANT:
       contents: [
         {
           role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: base64Image,
-              },
-            },
-          ],
+          parts: parts,
         },
       ],
       config: {
@@ -152,6 +100,40 @@ IMPORTANT:
     return JSON.parse(cleaned);
   } catch (error) {
     console.error("Analysis error:", error);
-    throw new Error(`Failed to analyze product: ${error.message}`);
+    throw new Error(`Failed to analyze: ${error.message}`);
+  }
+}
+
+export async function chatWithAI(productContext, messageHistory, newMessage) {
+  const systemPrompt = `You are ReVive AI, a helpful assistant. You just analyzed a product for the user and gave them recommendations. 
+The user is now asking follow-up questions.
+Be concise, friendly, and practical. Keep responses under 3 short paragraphs.
+
+CONTEXT ABOUT THE SCANNED PRODUCT:
+${JSON.stringify(productContext, null, 2)}
+`;
+
+  // Format history for Gemini chat format (user/model)
+  const formattedHistory = messageHistory.map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'model',
+    parts: [{ text: msg.content }]
+  }));
+
+  try {
+    const chat = genAI.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: [
+        { role: 'user', parts: [{ text: systemPrompt }] },
+        { role: 'model', parts: [{ text: "Understood. I will use this context for the user's questions." }] },
+        ...formattedHistory,
+        { role: 'user', parts: [{ text: newMessage }] }
+      ],
+    });
+
+    const response = await chat;
+    return response.text.trim();
+  } catch (error) {
+    console.error("Chat error:", error);
+    throw new Error("Failed to get response from AI. Please try again.");
   }
 }

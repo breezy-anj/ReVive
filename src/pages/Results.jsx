@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { chatWithAI } from '../lib/gemini';
 import './Results.css';
 
 const TAG_CLASS_MAP = {
@@ -23,6 +24,38 @@ function Results() {
   const navigate = useNavigate();
   const { result, imagePreview } = location.state || {};
   const [expandedId, setExpandedId] = useState(null);
+
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatting) return;
+
+    const newMessage = chatInput.trim();
+    setChatInput('');
+    setMessages(prev => [...prev, { role: 'user', content: newMessage }]);
+    setIsChatting(true);
+
+    try {
+      const reply = await chatWithAI(result, messages, newMessage);
+      setMessages(prev => [...prev, { role: 'model', content: reply }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'model', content: 'Sorry, I encountered an error. Please try again.' }]);
+    } finally {
+      setIsChatting(false);
+    }
+  };
 
   if (!result) {
     return (
@@ -210,6 +243,47 @@ function Results() {
               </span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* AI Chat Section */}
+      <div className="section chat-section">
+        <h4 className="section-title">💬 Chat with ReVive AI</h4>
+        <div className="chat-container">
+          {messages.length === 0 ? (
+            <div className="chat-empty">
+              <p>Have questions about these recommendations? Ask me!</p>
+            </div>
+          ) : (
+            <div className="chat-messages">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`chat-bubble ${msg.role}`}>
+                  {msg.content}
+                </div>
+              ))}
+              {isChatting && (
+                <div className="chat-bubble model typing">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+          <div className="chat-input-area">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="e.g., Where exactly can I sell this?"
+              disabled={isChatting}
+            />
+            <button onClick={handleSendMessage} disabled={isChatting || !chatInput.trim()}>
+              Send
+            </button>
+          </div>
         </div>
       </div>
 

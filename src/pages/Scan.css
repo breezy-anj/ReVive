@@ -308,7 +308,6 @@
 /* Notes input */
 .notes-section {
   margin-bottom: 24px;
-  animation: slideUp 0.4s ease;
 }
 
 .notes-input {
@@ -519,4 +518,85 @@
   border-radius: 50%;
   background: var(--primary);
   animation: pulse 1.5s ease infinite;
+}
+
+/* Image Grid */
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+  animation: slideUp 0.4s ease;
+}
+
+.image-thumbnail-wrap {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.image-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.btn-remove-img {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+}
+
+.image-thumbnail-add {
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--gray-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--gray-400);
+  cursor: pointer;
+  background: var(--gray-100);
+  transition: all var(--transition-fast);
+}
+
+.image-thumbnail-add:hover {
+  background: var(--accent-green-glow);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Analyze Footer */
+.analyze-footer {
+  position: sticky;
+  bottom: 0;
+  padding: 16px 20px;
+  background: white;
+  border-top: 1px solid var(--gray-200);
+  margin: 0 -20px; /* offset page padding */
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+  animation: slideUp 0.4s ease;
+  z-index: 20;
+}
+
+.btn-large {
+  padding: 16px;
+  font-size: 1.1rem;
+  font-weight: 600;
 }

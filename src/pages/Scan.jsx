@@ -1,29 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { moderateImage, analyzeProduct } from '../lib/gemini';
+import { analyzeImages } from '../lib/gemini';
 import './Scan.css';
-
-const CONDITION_OPTIONS = [
-  { value: 'Excellent', emoji: '✨', desc: 'Flawless, works perfectly. Like new.' },
-  { value: 'Good', emoji: '👍', desc: 'Minor wear, fully functional.' },
-  { value: 'Average', emoji: '😐', desc: 'Visible wear, may have minor issues.' },
-  { value: 'Poor', emoji: '😟', desc: 'Significant damage or not working.' },
-];
-
-const AGE_OPTIONS = [
-  'Less than 1 year',
-  '1-2 years',
-  '2-4 years',
-  '4-6 years',
-  '6+ years',
-  "Don't know",
-];
-
-const FUNCTIONAL_OPTIONS = [
-  { value: 'Yes', emoji: '✅' },
-  { value: 'Partially', emoji: '⚠️' },
-  { value: 'No', emoji: '❌' },
-];
 
 function Scan() {
   const navigate = useNavigate();
@@ -33,30 +11,17 @@ function Scan() {
   const streamRef = useRef(null);
 
   // States
-  const [step, setStep] = useState('capture'); // capture | questions | loading
-  const [imageData, setImageData] = useState(null); // base64
-  const [imageMimeType, setImageMimeType] = useState('image/jpeg');
-  const [imagePreview, setImagePreview] = useState(null); // data URL for display
-  const [productInfo, setProductInfo] = useState(null);
+  const [step, setStep] = useState('capture'); // capture | loading
+  const [images, setImages] = useState([]); // array of { base64, mimeType, dataUrl }
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
 
-  // BS Detection
-  const [bsAlert, setBsAlert] = useState(null);
-  const [moderating, setModerating] = useState(false);
-
-  // Questions
-  const [answers, setAnswers] = useState({
-    condition: '',
-    age: '',
-    functional: '',
-    accessories: '',
-  });
-  const [city, setCity] = useState('');
+  // User input
   const [userNotes, setUserNotes] = useState('');
 
-  // Error
+  // Error & Moderation
   const [error, setError] = useState(null);
+  const [bsAlert, setBsAlert] = useState(null);
 
   // Start camera
   const startCamera = useCallback(async () => {
@@ -85,24 +50,6 @@ function Scan() {
     setCameraActive(false);
   }, []);
 
-  // Capture from camera
-  const capturePhoto = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    const base64 = dataUrl.split(',')[1];
-    setImagePreview(dataUrl);
-    setImageMimeType('image/jpeg');
-    setImageData(base64);
-    stopCamera();
-    handleModeration(base64, 'image/jpeg');
-  }, [stopCamera]);
-
   // Helper to resize/compress image before sending to API
   const resizeImage = (dataUrl, maxWidth = 1024) => {
     return new Promise((resolve) => {
@@ -130,73 +77,95 @@ function Scan() {
     });
   };
 
-  // Handle file upload
-  const handleFileUpload = useCallback((e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const originalDataUrl = event.target.result;
-      const compressedDataUrl = await resizeImage(originalDataUrl);
-      
-      const mimeType = 'image/jpeg'; // Since we compressed to JPEG
-      const base64 = compressedDataUrl.split(',')[1];
-      
-      setImagePreview(compressedDataUrl);
-      setImageMimeType(mimeType);
-      setImageData(base64);
-      handleModeration(base64, mimeType);
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  // BS Detection / Moderation
-  const handleModeration = async (base64, mimeType) => {
-    setModerating(true);
-    setBsAlert(null);
-    setError(null);
-    try {
-      const result = await moderateImage(base64, mimeType);
-      if (result.isProduct) {
-        setProductInfo(result);
-        setStep('questions');
-      } else {
-        setBsAlert(result.rejectionMessage || "That doesn't look like a product we can help with!");
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setModerating(false);
-    }
+  // Add image to array
+  const addImage = (dataUrl, mimeType, base64) => {
+    if (images.length >= 4) return;
+    setImages(prev => [...prev, { dataUrl, mimeType, base64 }]);
   };
 
-  // Reset to capture
+  // Capture from camera
+  const capturePhoto = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || images.length >= 4) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    const base64 = dataUrl.split(',')[1];
+    
+    addImage(dataUrl, 'image/jpeg', base64);
+    
+    // Stop camera after capture to save battery, user can restart if they want more
+    stopCamera();
+  }, [images.length, stopCamera]);
+
+  // Handle file upload
+  const handleFileUpload = useCallback((e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    
+    // Calculate how many more we can add
+    const slotsLeft = 4 - images.length;
+    const filesToProcess = files.slice(0, slotsLeft);
+    
+    filesToProcess.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const originalDataUrl = event.target.result;
+        const compressedDataUrl = await resizeImage(originalDataUrl);
+        
+        const mimeType = 'image/jpeg'; // Since we compressed to JPEG
+        const base64 = compressedDataUrl.split(',')[1];
+        
+        addImage(compressedDataUrl, mimeType, base64);
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [images.length]);
+
+  // Remove image
+  const removeImage = (indexToRemove) => {
+    setImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  // Reset all
   const resetCapture = () => {
-    setImageData(null);
-    setImagePreview(null);
-    setProductInfo(null);
+    setImages([]);
     setBsAlert(null);
     setError(null);
     setStep('capture');
-    setAnswers({ condition: '', age: '', functional: '', accessories: '' });
     setUserNotes('');
+    stopCamera();
   };
 
   // Submit for analysis
   const handleAnalyze = async () => {
-    if (!answers.condition || !answers.age || !answers.functional) return;
+    if (images.length === 0) return;
     setStep('loading');
+    setError(null);
+    setBsAlert(null);
+    
     try {
-      const result = await analyzeProduct(imageData, imageMimeType, productInfo, answers, city, userNotes);
+      const result = await analyzeImages(images, userNotes);
+      
+      if (!result.isProduct) {
+        setStep('capture');
+        setBsAlert(result.rejectionMessage || "That doesn't look like a product we can help with!");
+        return;
+      }
+      
       // Navigate to results with data
-      navigate('/results', { state: { result, imagePreview } });
+      navigate('/results', { state: { result, imagePreview: images[0].dataUrl } });
     } catch (err) {
       setError(err.message);
-      setStep('questions');
+      setStep('capture');
     }
   };
-
-  const questionsComplete = answers.condition && answers.age && answers.functional;
 
   // ============ RENDER ============
 
@@ -234,127 +203,7 @@ function Scan() {
     );
   }
 
-  // Questions step
-  if (step === 'questions') {
-    return (
-      <div className="scan page-enter">
-        {/* Header */}
-        <div className="scan-header">
-          <button className="btn-back" onClick={resetCapture}>← Back</button>
-          <h3>Tell us about your item</h3>
-        </div>
-
-        {/* Product detected card */}
-        <div className="detected-card">
-          <img src={imagePreview} alt="Captured" className="detected-img" />
-          <div className="detected-info">
-            <div className="tag tag-eco">✅ Product Detected</div>
-            <h4>{productInfo?.productName || 'Unknown Product'}</h4>
-            <span className="text-muted" style={{ fontSize: '0.8rem' }}>{productInfo?.category}</span>
-          </div>
-        </div>
-
-        {/* City input */}
-        <div className="question-section">
-          <label className="q-label">📍 Your city or area</label>
-          <input
-            type="text"
-            className="city-input"
-            placeholder="e.g., Delhi, Mumbai, Bangalore..."
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-          />
-        </div>
-
-        {/* Condition */}
-        <div className="question-section">
-          <label className="q-label">How would you describe the condition?</label>
-          <div className="condition-grid">
-            {CONDITION_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                className={`condition-card ${answers.condition === opt.value ? 'selected' : ''}`}
-                onClick={() => setAnswers(prev => ({ ...prev, condition: opt.value }))}
-              >
-                <span className="cc-emoji">{opt.emoji}</span>
-                <span className="cc-label">{opt.value}</span>
-                <span className="cc-desc">{opt.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Age */}
-        <div className="question-section">
-          <label className="q-label">How old is it?</label>
-          <div className="age-grid">
-            {AGE_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                className={`age-pill ${answers.age === opt ? 'selected' : ''}`}
-                onClick={() => setAnswers(prev => ({ ...prev, age: opt }))}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Functional */}
-        <div className="question-section">
-          <label className="q-label">Does it still work?</label>
-          <div className="functional-grid">
-            {FUNCTIONAL_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                className={`functional-card ${answers.functional === opt.value ? 'selected' : ''}`}
-                onClick={() => setAnswers(prev => ({ ...prev, functional: opt.value }))}
-              >
-                <span style={{ fontSize: '1.3rem' }}>{opt.emoji}</span>
-                <span className="fc-label">{opt.value}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Accessories */}
-        <div className="question-section">
-          <label className="q-label">Any accessories included? (charger, box, etc.)</label>
-          <div className="functional-grid">
-            <button
-              className={`functional-card ${answers.accessories === 'Yes' ? 'selected' : ''}`}
-              onClick={() => setAnswers(prev => ({ ...prev, accessories: 'Yes' }))}
-            >
-              <span style={{ fontSize: '1.3rem' }}>📦</span>
-              <span className="fc-label">Yes</span>
-            </button>
-            <button
-              className={`functional-card ${answers.accessories === 'No' ? 'selected' : ''}`}
-              onClick={() => setAnswers(prev => ({ ...prev, accessories: 'No' }))}
-            >
-              <span style={{ fontSize: '1.3rem' }}>🚫</span>
-              <span className="fc-label">No</span>
-            </button>
-          </div>
-        </div>
-
-        {error && <div className="error-msg">{error}</div>}
-
-        {/* Analyze button */}
-        <div className="scan-actions" style={{ paddingBottom: '32px' }}>
-          <button
-            className="btn btn-primary btn-full btn-lg"
-            disabled={!questionsComplete}
-            onClick={handleAnalyze}
-          >
-            Analyze →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ============ CAPTURE STEP ============
+  // Capture / Form step
   return (
     <div className="scan page-enter">
       {/* Header */}
@@ -364,55 +213,53 @@ function Scan() {
       </div>
 
       <p className="scan-subtitle text-muted text-center">
-        Take a photo or upload an image of the item you want to give a second life
+        Add up to 4 photos of the item you want to give a second life
       </p>
 
-      {/* Camera or Preview */}
-      <div className="capture-area">
-        {imagePreview ? (
-          <div className="preview-wrap">
-            <img src={imagePreview} alt="Preview" className="preview-img" />
-            {moderating && (
-              <div className="moderating-overlay">
-                <div className="moderating-spinner"></div>
-                <span>Checking image...</span>
+      {/* Image Grid */}
+      {images.length > 0 && (
+        <div className="image-grid">
+          {images.map((img, idx) => (
+            <div key={idx} className="image-thumbnail-wrap">
+              <img src={img.dataUrl} alt={`Upload ${idx + 1}`} className="image-thumbnail" />
+              <button className="btn-remove-img" onClick={() => removeImage(idx)}>✕</button>
+            </div>
+          ))}
+          {images.length < 4 && (
+            <div className="image-thumbnail-add" onClick={() => fileInputRef.current?.click()}>
+              <span>+</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Camera or Capture Placeholder */}
+      {images.length < 4 && (
+        <div className="capture-area" style={images.length > 0 ? { minHeight: 'auto', padding: '20px 0' } : {}}>
+          {cameraActive ? (
+            <div className="camera-wrap">
+              <video ref={videoRef} autoPlay playsInline muted className="camera-feed" />
+              <div className="camera-overlay">
+                <div className="scan-frame">
+                  <div className="frame-corner tl"></div>
+                  <div className="frame-corner tr"></div>
+                  <div className="frame-corner bl"></div>
+                  <div className="frame-corner br"></div>
+                </div>
               </div>
-            )}
-          </div>
-        ) : cameraActive ? (
-          <div className="camera-wrap">
-            <video ref={videoRef} autoPlay playsInline muted className="camera-feed" />
-            <div className="camera-overlay">
-              <div className="scan-frame">
-                <div className="frame-corner tl"></div>
-                <div className="frame-corner tr"></div>
-                <div className="frame-corner bl"></div>
-                <div className="frame-corner br"></div>
+              <div className="camera-controls">
+                <button className="capture-btn" onClick={capturePhoto}>
+                  <div className="capture-btn-inner"></div>
+                </button>
+                <button className="btn-close-camera" onClick={stopCamera}>Cancel</button>
               </div>
             </div>
-            <button className="capture-btn" onClick={capturePhoto}>
-              <div className="capture-btn-inner"></div>
-            </button>
-          </div>
-        ) : (
-          <div className="capture-placeholder">
-            <div className="placeholder-icon">📸</div>
-            <p>No image captured yet</p>
-          </div>
-        )}
-      </div>
-
-      {/* User notes — visible after image captured but before moderation completes, or anytime in capture */}
-      {!cameraActive && (
-        <div className="notes-section">
-          <label className="q-label">📝 Tell us more (optional)</label>
-          <textarea
-            className="notes-input"
-            placeholder="e.g., Screen is cracked, battery drains fast, want to sell urgently, missing charger..."
-            value={userNotes}
-            onChange={(e) => setUserNotes(e.target.value)}
-            rows={3}
-          />
+          ) : images.length === 0 ? (
+            <div className="capture-placeholder">
+              <div className="placeholder-icon">📸</div>
+              <p>No images added yet</p>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -420,66 +267,61 @@ function Scan() {
 
       {/* BS Alert Modal */}
       {bsAlert && (
-        <div className="bs-modal-backdrop" onClick={() => setBsAlert(null)}>
-          <div className="bs-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="bs-alert-overlay">
+          <div className="bs-alert-box">
             <div className="bs-icon">🚫</div>
-            <h3>Oops! That's not a product</h3>
-            <p>{bsAlert}</p>
-            <button className="btn btn-primary btn-full" onClick={resetCapture}>
-              Try Again
-            </button>
+            <p className="bs-message">{bsAlert}</p>
+            <button className="btn btn-primary w-100" onClick={() => setBsAlert(null)}>Got it</button>
           </div>
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <div className="error-msg">
-          {error}
-          <button className="btn btn-ghost" onClick={resetCapture}>Try Again</button>
-        </div>
-      )}
+      {/* Controls */}
+      <div className="scan-controls">
+        {error && (
+          <div className="error-message">
+            <p>{error}</p>
+          </div>
+        )}
 
-      {/* Action buttons */}
-      {!imagePreview && !moderating && (
-        <div className="capture-actions">
-          {!cameraActive ? (
-            <>
-              <button className="btn btn-primary btn-full" onClick={startCamera}>
-                📸 Open Camera
-              </button>
-              <button
-                className="btn btn-secondary btn-full"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                🖼️ Upload from Gallery
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-secondary btn-full" onClick={stopCamera}>
-              ✕ Close Camera
-            </button>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={handleFileUpload}
+        {/* User Notes */}
+        <div className="notes-section">
+          <label className="q-label">📝 Tell us more (optional)</label>
+          <textarea
+            className="notes-input"
+            placeholder="e.g., Screen is cracked, moving out next week, missing charger, used for 2 years..."
+            value={userNotes}
+            onChange={(e) => setUserNotes(e.target.value)}
+            rows={4}
           />
         </div>
-      )}
 
-      {/* Camera error */}
-      {cameraError && (
-        <div className="camera-error">
-          <p>{cameraError}</p>
-          <button
-            className="btn btn-secondary btn-full"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            🖼️ Upload from Gallery Instead
+        {images.length < 4 && !cameraActive && (
+          <div className="capture-actions">
+            <button className="btn btn-primary" onClick={startCamera}>
+              <span className="icon">📷</span> Open Camera
+            </button>
+            <button className="btn btn-outline" onClick={() => fileInputRef.current?.click()}>
+              <span className="icon">🖼️</span> Upload from Gallery
+            </button>
+          </div>
+        )}
+        {cameraError && <p className="error-text text-center mt-2">{cameraError}</p>}
+        <input 
+          type="file" 
+          accept="image/*" 
+          multiple
+          ref={fileInputRef} 
+          style={{ display: 'none' }} 
+          onChange={handleFileUpload} 
+        />
+      </div>
+
+      {/* Analyze Footer */}
+      {images.length > 0 && (
+        <div className="analyze-footer">
+          <button className="btn btn-primary w-100 btn-large" onClick={handleAnalyze}>
+            Analyze Item ({images.length}/4) →
           </button>
         </div>
       )}
