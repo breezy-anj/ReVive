@@ -117,6 +117,7 @@ body {
   .desktop-notice h3 {
     margin: 0 0 12px 0;
     font-size: 1.2rem;
+    color: var(--white);
   }
 
   .desktop-notice p {
@@ -124,6 +125,7 @@ body {
     font-size: 0.95rem;
     line-height: 1.5;
     opacity: 0.9;
+    color: var(--white);
   }
 
   .app-shell {

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/revive-logo.svg" alt="ReVive Logo" width="80" />
+  <img src="public/logo.png" alt="ReVive Logo" width="80" />
 </p>
 
 <h1 align="center">ReVive</h1>
@@ -14,6 +14,10 @@
   <img src="https://img.shields.io/badge/Build-Vite%208-646CFF?logo=vite&logoColor=white" />
   <img src="https://img.shields.io/badge/Deploy-Vercel-000?logo=vercel&logoColor=white" />
   <img src="https://img.shields.io/badge/Type-PWA-0A6847" />
+</p>
+
+<p align="center">
+  <strong>Prototype link:</strong> <a href="https://revive-two-xi.vercel.app">https://revive-two-xi.vercel.app</a>
 </p>
 
 ---
