@@ -212,8 +212,8 @@ function Scan() {
       {/* Controls */}
       <div className="scan-controls">
         {error && (
-          <div className="error-message">
-            <p>{error}</p>
+          <div className="error-msg">
+            <p style={{ margin: 0 }}>{error}</p>
           </div>
         )}
 
