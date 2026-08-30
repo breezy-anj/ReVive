@@ -1,0 +1,21 @@
+{
+  "name": "ReVive - Give Your Stuff a Better Next Life",
+  "short_name": "ReVive",
+  "description": "AI-powered platform to find the best second life for your unused products",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0faf4",
+  "theme_color": "#0A6847",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
