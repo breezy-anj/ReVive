@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { chatWithAI } from '../lib/gemini';
+import { chatWithAI, revisePlan } from '../lib/gemini';
 import './Results.css';
 
 const TAG_CLASS_MAP = {
@@ -23,12 +23,15 @@ function Results() {
   const location = useLocation();
   const navigate = useNavigate();
   const { result, imagePreview } = location.state || {};
+  
+  const [currentResult, setCurrentResult] = useState(result || null);
   const [expandedId, setExpandedId] = useState(null);
 
   // Chat state
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatting, setIsChatting] = useState(false);
+  const [isRevising, setIsRevising] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -48,7 +51,7 @@ function Results() {
     setIsChatting(true);
 
     try {
-      const reply = await chatWithAI(result, messages, newMessage);
+      const reply = await chatWithAI(currentResult, messages, newMessage);
       setMessages(prev => [...prev, { role: 'model', content: reply }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'model', content: 'Sorry, I encountered an error. Please try again.' }]);
@@ -57,7 +60,30 @@ function Results() {
     }
   };
 
-  if (!result) {
+  const handleRevisePlan = async () => {
+    if (isRevising || messages.length === 0) return;
+    setIsRevising(true);
+    
+    try {
+      const updatedResult = await revisePlan(currentResult, messages);
+      
+      // Validate that Gemini actually returned the correct JSON structure
+      if (!updatedResult || !updatedResult.product || !Array.isArray(updatedResult.paths)) {
+        throw new Error("Invalid response format from AI");
+      }
+      
+      setCurrentResult(updatedResult);
+      setMessages(prev => [...prev, { role: 'model', content: 'I have updated your ReVive plan above based on our conversation! 🔄' }]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error("Revise plan error:", err);
+      setMessages(prev => [...prev, { role: 'model', content: 'Sorry, I got a little confused trying to update the plan. Could you try pressing the button again?' }]);
+    } finally {
+      setIsRevising(false);
+    }
+  };
+
+  if (!currentResult) {
     return (
       <div className="results page-enter" style={{ padding: '20px', textAlign: 'center', paddingTop: '100px' }}>
         <h2>No results found</h2>
@@ -69,9 +95,12 @@ function Results() {
     );
   }
 
-  const { product, paths, aiNote } = result;
-  const recommendedPath = paths.find(p => p.isRecommended);
-  const otherPaths = paths.filter(p => !p.isRecommended);
+  const product = currentResult.product || {};
+  const paths = currentResult.paths || [];
+  const aiNote = currentResult.aiNote || '';
+  
+  const recommendedPath = paths.find(p => p.isRecommended) || paths[0];
+  const otherPaths = paths.filter(p => p !== recommendedPath);
 
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
@@ -278,12 +307,23 @@ function Results() {
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="e.g., Where exactly can I sell this?"
-              disabled={isChatting}
+              disabled={isChatting || isRevising}
             />
-            <button onClick={handleSendMessage} disabled={isChatting || !chatInput.trim()}>
+            <button onClick={handleSendMessage} disabled={isChatting || isRevising || !chatInput.trim()}>
               Send
             </button>
           </div>
+          {messages.length > 0 && (
+            <div className="chat-actions">
+              <button 
+                className="btn-revise-plan" 
+                onClick={handleRevisePlan}
+                disabled={isRevising || isChatting}
+              >
+                {isRevising ? '🔄 Revising Plan...' : '🔄 Revise Plan based on this chat'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

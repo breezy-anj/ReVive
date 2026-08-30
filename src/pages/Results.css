@@ -413,3 +413,31 @@
   color: var(--gray-400);
   cursor: not-allowed;
 }
+
+.chat-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-revise-plan {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border: 1px solid var(--primary);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-revise-plan:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-revise-plan:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

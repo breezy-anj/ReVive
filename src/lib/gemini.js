@@ -2,6 +2,25 @@ import { GoogleGenAI } from "@google/genai";
 
 const genAI = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
+function formatError(error, defaultMsg) {
+  let msg = error.message;
+  // If the error message is raw JSON from the API
+  if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+    return "The AI is currently receiving too many requests. Please wait a minute and try again.";
+  }
+  if (msg.includes('{"error"')) {
+    try {
+      const parsed = JSON.parse(msg.substring(msg.indexOf('{')));
+      if (parsed.error && parsed.error.message) {
+        msg = parsed.error.message;
+      }
+    } catch (e) {
+      // Ignore parse errors, just use the raw string
+    }
+  }
+  return `${defaultMsg}: ${msg}`;
+}
+
 export async function analyzeImages(images, userNotes) {
   const prompt = `You are ReVive AI — an expert product analyst that helps people find the best second life for products they no longer need. You think creatively and practically.
 
@@ -100,7 +119,7 @@ IMPORTANT FOR VALID PRODUCTS:
     return JSON.parse(cleaned);
   } catch (error) {
     console.error("Analysis error:", error);
-    throw new Error(`Failed to analyze: ${error.message}`);
+    throw new Error(formatError(error, "Failed to analyze"));
   }
 }
 
@@ -108,6 +127,7 @@ export async function chatWithAI(productContext, messageHistory, newMessage) {
   const systemPrompt = `You are ReVive AI, a helpful assistant. You just analyzed a product for the user and gave them recommendations. 
 The user is now asking follow-up questions.
 Be concise, friendly, and practical. Keep responses under 3 short paragraphs.
+If the user hasn't provided crucial details in their initial scan (like the age, specific condition, brand, or model of the item), proactively ask them for these details so you can give better advice! For example: "You didn't specify how old your laptop is. If it's under 3 years old..."
 
 CONTEXT ABOUT THE SCANNED PRODUCT:
 ${JSON.stringify(productContext, null, 2)}
@@ -134,6 +154,67 @@ ${JSON.stringify(productContext, null, 2)}
     return response.text.trim();
   } catch (error) {
     console.error("Chat error:", error);
-    throw new Error("Failed to get response from AI. Please try again.");
+    throw new Error(formatError(error, "Failed to get response"));
+  }
+}
+
+export async function revisePlan(originalResult, messageHistory) {
+  const prompt = `You are ReVive AI. The user previously scanned a product and you gave them an initial analysis and recommendations.
+Then, you had a conversation with the user where they provided more context (e.g. age, condition, preferences).
+You must now REGENERATE the original analysis based on the new context from the conversation.
+Update the product's conditionScore, conditionLabel, estimatedValueRange, and summary if the chat revealed new information (e.g. it's broken).
+Update the paths to reflect the new reality (e.g. if it's worthless, remove selling paths and focus on repair/recycle).
+
+ORIGINAL PRODUCT ANALYSIS:
+${JSON.stringify(originalResult, null, 2)}
+
+CONVERSATION HISTORY:
+${messageHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n')}
+
+Respond ONLY with valid JSON in the exact same format as the original analysis:
+{
+  "isProduct": true,
+  "product": {
+    "name": "Full product name",
+    "category": "category",
+    "conditionScore": 0-100,
+    "conditionLabel": "Excellent/Good/Average/Poor",
+    "estimatedValueRange": "₹X,XXX - ₹X,XXX",
+    "summary": "One line summary"
+  },
+  "paths": [
+    {
+      "id": 1,
+      "title": "Short action title",
+      "subtitle": "Where/how",
+      "icon": "emoji",
+      "tag": "BEST VALUE / ECO-FRIENDLY / CREATIVE / QUICK & EASY / HIGH IMPACT / RECOMMENDED",
+      "valueOrCost": "₹X,XXX - ₹X,XXX or Free",
+      "reasoning": "2-3 sentences",
+      "steps": ["Step 1", "Step 2"],
+      "difficulty": "Easy / Medium / Hard",
+      "timeEstimate": "Instant / 1-2 days / 1 week",
+      "environmentalImpact": "Brief note",
+      "isRecommended": true/false
+    }
+  ],
+  "aiNote": "A brief note about how you've updated the plan based on their chat."
+}
+
+IMPORTANT: Exactly ONE path should have "isRecommended": true. Order from most recommended to least.`;
+
+  try {
+    const response = await genAI.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { responseMimeType: "application/json" },
+    });
+    
+    const text = response.text.trim();
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error("Revise error:", error);
+    throw new Error(formatError(error, "Failed to revise plan"));
   }
 }

@@ -219,10 +219,10 @@ function Scan() {
 
         {/* User Notes */}
         <div className="notes-section">
-          <label className="q-label">📝 Tell us more (optional)</label>
+          <label className="q-label">📝 Tell us about the age/condition of your product</label>
           <textarea
             className="notes-input"
-            placeholder="e.g., Screen is cracked, moving out next week, missing charger, used for 2 years..."
+            placeholder="e.g., 2 years old, screen is cracked, missing charger, moving out next week..."
             value={userNotes}
             onChange={(e) => setUserNotes(e.target.value)}
             rows={4}
